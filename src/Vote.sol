@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
+import "./INFTVoting.sol";
+import "./Chainlink.sol";
+
 abstract contract VoteBone {
     function vote() external virtual {}
 
@@ -27,6 +30,14 @@ contract Vote is VoteBone {
     uint8 public immutable totalOptions;
     mapping(address => uint8) public votersRecord;
     uint256[] public totalRecord;
+    
+    // NFT Voting Integration
+    INFTVoting public nftVotingContract;
+    
+    // Chainlink Integration
+    ChainlinkIntegration public chainlinkIntegration;
+    uint256 public voteEndTime;
+    bool public useRandomWinner;
 
     /////////////
     /// event ///
@@ -37,7 +48,11 @@ contract Vote is VoteBone {
     constructor(
         string memory _VoteName,
         string memory _VoteDescribtion,
-        uint8 _totalOptions // 加 factory contract address (owner)，後續串 Endvote
+        uint8 _totalOptions, // 加 factory contract address (owner)，後續串 Endvote
+        address _nftVotingContract,
+        address _chainlinkIntegration,
+        uint256 _voteDurationInHours,
+        bool _useRandomWinner
     ) {
         require(_totalOptions > 1, "Need at least 2 options");
         i_VoteName = _VoteName;
@@ -45,6 +60,17 @@ contract Vote is VoteBone {
         totalOptions = _totalOptions;
         totalRecord = new uint256[](_totalOptions + 1); // index 0 保留
         VoteState = state.Open;
+        nftVotingContract = INFTVoting(_nftVotingContract);
+        
+        // Chainlink integration setup
+        if (_chainlinkIntegration != address(0)) {
+            chainlinkIntegration = ChainlinkIntegration(_chainlinkIntegration);
+            voteEndTime = block.timestamp + (_voteDurationInHours * 1 hours);
+            useRandomWinner = _useRandomWinner;
+            // Configure automation for vote end
+            chainlinkIntegration.configureAutomation(address(this), voteEndTime);
+        }
+        
         // 讓工廠合約 approve 將項目發起者的資金轉移到子帳戶，最後由子帳戶發送獎金，目前暫定 eth
     }
 
@@ -83,6 +109,12 @@ contract Vote is VoteBone {
     ) external verifyNoVotingRecord Votecheck(_choice) {
         votersRecord[msg.sender] = _choice;
         totalRecord[_choice] += 1;
+        
+        // Grant NFT voting rights to voter
+        if (address(nftVotingContract) != address(0)) {
+            nftVotingContract.addHolder(msg.sender);
+        }
+        
         emit Voted(msg.sender, _choice);
     }
 
@@ -109,5 +141,80 @@ contract Vote is VoteBone {
 
     function TotalVoteRecordGetter() public view returns (uint256[] memory) {
         return totalRecord;
+    }
+    
+    // Winner selection and NFT reward functions
+    function determineWinner() public view returns (uint8) {
+        require(VoteState == state.Close, "Vote is not closed yet");
+        uint256 maxVotes = 0;
+        uint8 winner = 1;
+        
+        for (uint8 i = 1; i <= totalOptions; i++) {
+            if (totalRecord[i] > maxVotes) {
+                maxVotes = totalRecord[i];
+                winner = i;
+            }
+        }
+        
+        return winner;
+    }
+    
+    // Chainlink VRF callback function
+    function processRandomWinner(uint256 randomNumber) external {
+        require(msg.sender == address(chainlinkIntegration), "Only Chainlink can call this");
+        require(VoteState == state.Close, "Vote must be closed");
+        
+        if (useRandomWinner) {
+            _selectRandomWinner(randomNumber);
+        } else {
+            _selectHighestVoteWinner();
+        }
+    }
+    
+    function _selectRandomWinner(uint256 randomNumber) internal {
+        uint256 totalVotes = getTotalVotes();
+        require(totalVotes > 0, "No votes cast");
+        
+        uint256 randomIndex = randomNumber % totalVotes;
+        uint256 currentSum = 0;
+        
+        for (uint8 i = 1; i <= totalOptions; i++) {
+            currentSum += totalRecord[i];
+            if (randomIndex < currentSum) {
+                _rewardWinners(i);
+                break;
+            }
+        }
+    }
+    
+    function _selectHighestVoteWinner() internal {
+        uint8 winningOption = determineWinner();
+        _rewardWinners(winningOption);
+    }
+    
+    function _rewardWinners(uint8 winningOption) internal {
+        // Mark winner in NFT contract
+        if (address(nftVotingContract) != address(0)) {
+            // In real implementation, you'd iterate through voters and reward winners
+            // For now, this is a placeholder for the winner reward logic
+        }
+    }
+    
+    function getTotalVotes() public view returns (uint256) {
+        uint256 total = 0;
+        for (uint8 i = 1; i <= totalOptions; i++) {
+            total += totalRecord[i];
+        }
+        return total;
+    }
+    
+    function rewardWinner() external {
+        require(VoteState == state.Close, "Vote is not closed yet");
+        
+        if (address(chainlinkIntegration) != address(0) && useRandomWinner) {
+            chainlinkIntegration.requestRandomWinner(address(this));
+        } else {
+            _selectHighestVoteWinner();
+        }
     }
 }
