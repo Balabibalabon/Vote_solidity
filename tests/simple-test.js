@@ -90,7 +90,18 @@ async function main() {
             console.log(`   Option ${i}: ${updatedRecord[i].toString()} votes`);
         }
         
+        // Close the vote before determining winner
+        console.log("\n⏰ Closing Vote...");
+        console.log("   Simulating time passage...");
+        await ethers.provider.send("evm_increaseTime", [24 * 60 * 60 + 1]); // 24 hours + 1 second
+        await ethers.provider.send("evm_mine");
+        
+        console.log("   Ending vote...");
+        await vote.endVote();
+        console.log("✅ Vote closed successfully");
+        
         // Test winner determination
+        console.log("\n🏆 Determining Winner...");
         const winner = await vote.determineWinner();
         console.log("🏆 Winning Option:", winner.toString());
         
