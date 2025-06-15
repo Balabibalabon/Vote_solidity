@@ -1,28 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
-import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
-import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title ChainlinkIntegration
- * @dev Integrates Chainlink VRF for random winner selection and Chainlink Automation for vote management
+ * @dev Simplified mock integration for random winner selection and vote management
+ * @notice This is a simplified version for testing without full Chainlink dependencies
  */
-contract ChainlinkIntegration is VRFConsumerBaseV2, AutomationCompatibleInterface, Ownable {
+contract ChainlinkIntegration is Ownable {
     
-    // Chainlink VRF Configuration
-    VRFCoordinatorV2Interface immutable COORDINATOR;
-    uint64 private s_subscriptionId;
-    bytes32 private s_keyHash;
-    uint32 private s_callbackGasLimit = 2500000;
-    uint16 private s_requestConfirmations = 3;
-    uint32 private s_numWords = 1;
-
-    // VRF Request tracking
-    mapping(uint256 => address) public requestToVoteContract;
-    mapping(address => uint256) public voteContractToRequest;
+    // Mock VRF Configuration
     mapping(address => uint256) public randomResults;
     mapping(address => bool) public pendingRequests;
 
@@ -43,49 +31,46 @@ contract ChainlinkIntegration is VRFConsumerBaseV2, AutomationCompatibleInterfac
     event AutomationConfigured(address indexed voteContract, uint256 voteEndTime);
     event VoteEnded(address indexed voteContract, uint256 randomNumber);
 
-    constructor(
-        address vrfCoordinator,
-        uint64 subscriptionId,
-        bytes32 keyHash
-    ) VRFConsumerBaseV2(vrfCoordinator) {
-        COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
-        s_subscriptionId = subscriptionId;
-        s_keyHash = keyHash;
+    constructor() Ownable(msg.sender) {
+        // Simplified constructor without VRF dependencies
     }
 
     /**
-     * @dev Request random number for vote winner selection
+     * @dev Request random number for vote winner selection (mock implementation)
      * @param voteContract Address of the vote contract requesting randomness
      */
     function requestRandomWinner(address voteContract) external returns (uint256 requestId) {
         require(!pendingRequests[voteContract], "Request already pending for this vote");
         
-        requestId = COORDINATOR.requestRandomWords(
-            s_keyHash,
-            s_subscriptionId,
-            s_requestConfirmations,
-            s_callbackGasLimit,
-            s_numWords
-        );
+        // Mock request ID
+        requestId = uint256(keccak256(abi.encodePacked(block.timestamp, voteContract))) % 1000000;
         
-        requestToVoteContract[requestId] = voteContract;
-        voteContractToRequest[voteContract] = requestId;
         pendingRequests[voteContract] = true;
         
         emit RandomnessRequested(voteContract, requestId);
+        
+        // Simulate immediate fulfillment with mock random number
+        fulfillRandomWords(requestId, voteContract);
+        
         return requestId;
     }
 
     /**
-     * @dev Chainlink VRF callback function
+     * @dev Mock random number fulfillment
      * @param requestId The ID of the VRF request
-     * @param randomWords Array of random numbers
+     * @param voteContract Address of the vote contract
      */
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
-        address voteContract = requestToVoteContract[requestId];
-        require(voteContract != address(0), "Invalid request ID");
+    function fulfillRandomWords(uint256 requestId, address voteContract) internal {
+        require(voteContract != address(0), "Invalid vote contract");
         
-        uint256 randomNumber = randomWords[0];
+        // Generate mock random number
+        uint256 randomNumber = uint256(keccak256(abi.encodePacked(
+            block.timestamp, 
+            block.prevrandao, 
+            voteContract,
+            requestId
+        )));
+        
         randomResults[voteContract] = randomNumber;
         pendingRequests[voteContract] = false;
         
@@ -119,70 +104,24 @@ contract ChainlinkIntegration is VRFConsumerBaseV2, AutomationCompatibleInterfac
     }
 
     /**
-     * @dev Chainlink Automation checkUpkeep function
-     * @param checkData Additional data for upkeep check
-     * @return upkeepNeeded Whether upkeep is needed
-     * @return performData Data to pass to performUpkeep
+     * @dev Manual upkeep function to end votes (simplified version)
+     * @param voteContract Address of the vote contract to end
      */
-    function checkUpkeep(bytes calldata checkData) 
-        external 
-        view 
-        override 
-        returns (bool upkeepNeeded, bytes memory performData) 
-    {
-        upkeepNeeded = false;
-        address[] memory contractsToEnd = new address[](activeVoteContracts.length);
-        uint256 count = 0;
+    function performUpkeep(address voteContract) external {
+        AutomationConfig storage config = automationConfigs[voteContract];
         
-        for (uint256 i = 0; i < activeVoteContracts.length; i++) {
-            address voteContract = activeVoteContracts[i];
-            AutomationConfig memory config = automationConfigs[voteContract];
-            
-            if (config.isActive && 
-                !config.executed && 
-                block.timestamp >= config.voteEndTime) {
-                contractsToEnd[count] = voteContract;
-                count++;
-                upkeepNeeded = true;
-            }
-        }
+        require(config.isActive, "Vote is not active");
+        require(!config.executed, "Vote already executed");
+        require(block.timestamp >= config.voteEndTime, "Vote has not ended yet");
         
-        if (upkeepNeeded) {
-            // Resize array to actual count
-            address[] memory finalContracts = new address[](count);
-            for (uint256 i = 0; i < count; i++) {
-                finalContracts[i] = contractsToEnd[i];
-            }
-            performData = abi.encode(finalContracts);
-        }
+        config.executed = true;
+        config.isActive = false;
         
-        return (upkeepNeeded, performData);
-    }
-
-    /**
-     * @dev Chainlink Automation performUpkeep function
-     * @param performData Data from checkUpkeep
-     */
-    function performUpkeep(bytes calldata performData) external override {
-        address[] memory contractsToEnd = abi.decode(performData, (address[]));
+        // Generate and process random number immediately
+        uint256 requestId = uint256(keccak256(abi.encodePacked(block.timestamp, voteContract))) % 1000000;
+        fulfillRandomWords(requestId, voteContract);
         
-        for (uint256 i = 0; i < contractsToEnd.length; i++) {
-            address voteContract = contractsToEnd[i];
-            AutomationConfig storage config = automationConfigs[voteContract];
-            
-            if (config.isActive && 
-                !config.executed && 
-                block.timestamp >= config.voteEndTime) {
-                
-                config.executed = true;
-                config.isActive = false;
-                
-                // Request random number for winner selection
-                uint256 requestId = requestRandomWinner(voteContract);
-                
-                emit VoteEnded(voteContract, requestId);
-            }
-        }
+        emit VoteEnded(voteContract, requestId);
     }
 
     /**
@@ -204,9 +143,9 @@ contract ChainlinkIntegration is VRFConsumerBaseV2, AutomationCompatibleInterfac
     }
 
     /**
-     * @dev Get automation configuration for a vote contract
+     * @dev Get automation config for a vote contract
      * @param voteContract Address of the vote contract
-     * @return AutomationConfig struct
+     * @return Automation configuration
      */
     function getAutomationConfig(address voteContract) external view returns (AutomationConfig memory) {
         return automationConfigs[voteContract];
@@ -218,51 +157,5 @@ contract ChainlinkIntegration is VRFConsumerBaseV2, AutomationCompatibleInterfac
      */
     function getActiveVoteContracts() external view returns (address[] memory) {
         return activeVoteContracts;
-    }
-
-    /**
-     * @dev Emergency stop automation for a vote contract (only owner)
-     * @param voteContract Address of the vote contract
-     */
-    function emergencyStopAutomation(address voteContract) external onlyOwner {
-        automationConfigs[voteContract].isActive = false;
-    }
-
-    /**
-     * @dev Update VRF configuration (only owner)
-     * @param subscriptionId New subscription ID
-     * @param keyHash New key hash
-     * @param callbackGasLimit New callback gas limit
-     */
-    function updateVRFConfig(
-        uint64 subscriptionId,
-        bytes32 keyHash,
-        uint32 callbackGasLimit
-    ) external onlyOwner {
-        s_subscriptionId = subscriptionId;
-        s_keyHash = keyHash;
-        s_callbackGasLimit = callbackGasLimit;
-    }
-
-    /**
-     * @dev Clean up completed vote contracts from active list (only owner)
-     */
-    function cleanupCompletedVotes() external onlyOwner {
-        address[] memory newActiveContracts = new address[](activeVoteContracts.length);
-        uint256 activeCount = 0;
-        
-        for (uint256 i = 0; i < activeVoteContracts.length; i++) {
-            address voteContract = activeVoteContracts[i];
-            if (automationConfigs[voteContract].isActive) {
-                newActiveContracts[activeCount] = voteContract;
-                activeCount++;
-            }
-        }
-        
-        // Replace with cleaned array
-        delete activeVoteContracts;
-        for (uint256 i = 0; i < activeCount; i++) {
-            activeVoteContracts.push(newActiveContracts[i]);
-        }
     }
 } 

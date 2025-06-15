@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "./INFTVoting.sol";
 import "./Chainlink.sol";
 
 abstract contract VoteBone {
-    function vote() external virtual {}
-
     function EndVote() external {}
 
     function GetWinner() internal {}

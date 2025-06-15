@@ -1,6 +1,32 @@
 {
+  "name": "vote-system",
+  "version": "1.0.0",
+  "description": "Blockchain voting system with NFT integration and Chainlink automation",
+  "main": "deploy.js",
+  "scripts": {
+    "deploy": "npx hardhat run deploy.js",
+    "test": "npx hardhat run test.js",
+    "compile": "npx hardhat compile",
+    "node": "npx hardhat node",
+    "deploy-local": "npx hardhat run deploy.js --network localhost",
+    "test-local": "npx hardhat run test.js --network localhost"
+  },
   "dependencies": {
     "@chainlink/contracts": "^1.4.0",
-    "@openzeppelin/contracts": "^5.3.0"
-  }
+    "@openzeppelin/contracts": "^5.0.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "ethers": "^6.8.0",
+    "hardhat": "^2.19.0"
+  },
+  "keywords": [
+    "blockchain",
+    "voting",
+    "nft",
+    "chainlink",
+    "solidity"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 import {Vote} from "./Vote.sol";
 import {TransferableNFT} from "./TransferableNFT.sol";
 import {SoulboundNFT} from "./SoulboundNFT.sol";

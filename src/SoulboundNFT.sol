@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
@@ -98,22 +98,33 @@ contract SoulboundNFT is ERC721, ERC721URIStorage, Ownable, INFTVoting {
      * @return Always returns true as all tokens are soulbound
      */
     function locked(uint256 tokenId) external view returns (bool) {
-        require(_exists(tokenId), "Token does not exist");
+        require(_ownerOf(tokenId) != address(0), "Token does not exist");
         return true; // All tokens are permanently locked
     }
     
     /**
-     * @notice Override transfer functions to prevent transfers
+     * @notice Override transfer functions to prevent transfers (soulbound behavior)
      */
-    function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 tokenId,
-        uint256 batchSize
-    ) internal override {
-        // Allow minting, but prevent transfers
-        require(from == address(0) || to == address(0), "Token transfer is not allowed");
-        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+    function _update(address to, uint256 tokenId, address auth)
+        internal
+        override
+        returns (address)
+    {
+        address from = _ownerOf(tokenId);
+        
+        // Allow minting (from == address(0)) but prevent transfers
+        if (from != address(0) && to != address(0)) {
+            revert("Soulbound: token transfer is not allowed");
+        }
+        
+        return super._update(to, tokenId, auth);
+    }
+    
+    /**
+     * @notice Override transferOwnership to resolve conflict with INFTVoting interface
+     */
+    function transferOwnership(address newOwner) public override(Ownable, INFTVoting) onlyOwner {
+        super.transferOwnership(newOwner);
     }
     
     /**
