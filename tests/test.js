@@ -134,6 +134,17 @@ async function main() {
     console.log("=".repeat(50));
     
     try {
+        // First close the vote
+        console.log("⏰ Closing vote for winner determination...");
+        console.log("   Simulating time passage (24+ hours)...");
+        await ethers.provider.send("evm_increaseTime", [24 * 60 * 60 + 1]); // 24 hours + 1 second
+        await ethers.provider.send("evm_mine");
+        
+        console.log("   Ending vote...");
+        await vote.endVote();
+        console.log("✅ Vote closed successfully");
+        
+        // Now determine winner
         const winner = await vote.determineWinner();
         console.log("🥇 Winning option:", winner.toString());
         
