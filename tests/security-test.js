@@ -69,7 +69,15 @@ async function main() {
     console.log("\n🔥 Attack Simulation: Predicting Mock Randomness...");
     
     try {
-        // Attacker tries to predict mock randomness
+        // First close the mock vote to allow winner processing
+        console.log("⏰ Simulating time passage and ending mock vote...");
+        await ethers.provider.send("evm_increaseTime", [3601]); // Just over 1 hour
+        await ethers.provider.send("evm_mine");
+        
+        await mockVote.endVote();
+        console.log("✅ Mock vote ended successfully");
+        
+        // Now attacker tries to predict mock randomness
         const mockVoteAddress = await mockVote.getAddress();
         const blockBefore = await ethers.provider.getBlock('latest');
         
@@ -81,26 +89,27 @@ async function main() {
         // Handle null prevrandao in local testing
         const prevRandao = blockBefore.prevRandao || 0n;
         
-        // Attacker can predict the exact same calculation
+        // Attacker can predict the exact same calculation that will be used
+        const mockRequestId = 1; // Predictable request ID
         const predictedRandom = ethers.keccak256(ethers.solidityPacked(
             ['uint256', 'uint256', 'address', 'uint256'],
-            [blockBefore.timestamp, prevRandao, mockVoteAddress, 1]
+            [blockBefore.timestamp, prevRandao, mockVoteAddress, mockRequestId]
         ));
         
         console.log("🔮 Attacker's prediction hash:", predictedRandom);
         
-        // Request actual random number
+        // Request actual random number (this should work now)
         await mockChainlink.requestRandomWinner(mockVoteAddress);
         const actualRandom = await mockChainlink.getRandomResult(mockVoteAddress);
         
         console.log("🎲 Actual result:", ethers.toBeHex(actualRandom));
         
         // Show that attacker can predict the pattern
-        console.log("💡 Attack successful: Pattern predictable with public data");
+        console.log("💡 Mock version uses predictable inputs - pattern exploitable");
         
     } catch (error) {
         console.log("❌ Mock attack analysis failed:", error.message);
-        console.log("   This demonstrates implementation challenges in prediction");
+        console.log("   This may indicate additional security measures in implementation");
     }
     
     // Test Secure Version
@@ -108,6 +117,14 @@ async function main() {
     
     try {
         const secureVoteAddress = await secureVote.getAddress();
+        
+        // End the secure vote first
+        console.log("⏰ Ending secure vote...");
+        await ethers.provider.send("evm_increaseTime", [10]); // Small additional time
+        await ethers.provider.send("evm_mine");
+        
+        await secureVote.endVote();
+        console.log("✅ Secure vote ended successfully");
         
         // Request random number from secure version
         console.log("🔄 Requesting secure random number...");
