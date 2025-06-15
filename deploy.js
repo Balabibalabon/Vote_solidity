@@ -1,53 +1,89 @@
 // Vote System Deployment Script
-// Run with: node deploy.js
+// Run with: npx hardhat run deploy.js --network sepolia
 
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
+require("dotenv").config();
+
+async function validateEnvironment() {
+    console.log("🔍 Validating environment...");
+    console.log("   Network:", network.name);
+    
+    if (network.name === "sepolia" || network.name === "mumbai") {
+        if (!process.env.INFURA_PROJECT_ID) {
+            throw new Error("❌ INFURA_PROJECT_ID not set in .env file");
+        }
+        if (!process.env.PRIVATE_KEY) {
+            throw new Error("❌ PRIVATE_KEY not set in .env file");
+        }
+        console.log("✅ Environment variables validated");
+    } else {
+        console.log("✅ Using local network - no env vars needed");
+    }
+}
 
 async function main() {
     console.log("🚀 Starting Vote System Deployment...\n");
     
+    // Validate environment first
+    await validateEnvironment();
+    
     const [deployer] = await ethers.getSigners();
+    
+    if (!deployer) {
+        throw new Error("❌ No deployer account available. Check your network configuration and private key.");
+    }
+    
     console.log("📝 Deploying contracts with account:", deployer.address);
     console.log("💰 Account balance:", ethers.formatEther(await deployer.provider.getBalance(deployer.address)), "ETH\n");
+
+    // Check if we have enough balance for deployment
+    const balance = await deployer.provider.getBalance(deployer.address);
+    if (balance < ethers.parseEther("0.01")) {
+        console.log("⚠️  WARNING: Low balance. You may need more ETH for deployment.");
+    }
 
     // Step 1: Deploy Chainlink Integration (Mock for testing)
     console.log("⛓️  Deploying Chainlink Integration...");
     const ChainlinkIntegration = await ethers.getContractFactory("ChainlinkIntegration");
     
-    // Mock Chainlink parameters for testing (replace with real values for mainnet)
-    const vrfCoordinator = "0x8103B0A8A00be2DDC778e6e7eaa21791Cd364625"; // Sepolia VRF Coordinator
-    const subscriptionId = 1; // Replace with your Chainlink VRF subscription ID
-    const keyHash = "0x474e34a077df58807dbe9c96d3c009b23b3c6d0cce433e59bbf5b34f823bc56c"; // 30 gwei Key Hash
-    
-    const chainlinkIntegration = await ChainlinkIntegration.deploy(
-        vrfCoordinator,
-        subscriptionId,
-        keyHash
-    );
+    const chainlinkIntegration = await ChainlinkIntegration.deploy();
     await chainlinkIntegration.waitForDeployment();
     console.log("✅ ChainlinkIntegration deployed to:", await chainlinkIntegration.getAddress());
 
-    // Step 2: Deploy Vote Factory
+    // Step 2: Deploy NFT contracts
+    console.log("\n🎨 Deploying NFT contracts...");
+    
+    // Deploy TransferableNFT
+    const TransferableNFT = await ethers.getContractFactory("TransferableNFT");
+    const transferableNFT = await TransferableNFT.deploy(
+        "Test Vote",
+        "Winner NFT Reward"
+    );
+    await transferableNFT.waitForDeployment();
+    console.log("✅ TransferableNFT deployed to:", await transferableNFT.getAddress());
+    
+    // Deploy SoulboundNFT
+    const SoulboundNFT = await ethers.getContractFactory("SoulboundNFT");
+    const soulboundNFT = await SoulboundNFT.deploy(
+        "Test Vote",
+        "Voting Rights Token"
+    );
+    await soulboundNFT.waitForDeployment();
+    console.log("✅ SoulboundNFT deployed to:", await soulboundNFT.getAddress());
+
+    // Step 3: Deploy Vote Factory
     console.log("\n🏭 Deploying Vote Factory...");
     const VoteFactory = await ethers.getContractFactory("VoteFactory");
     const voteFactory = await VoteFactory.deploy();
     await voteFactory.waitForDeployment();
     console.log("✅ VoteFactory deployed to:", await voteFactory.getAddress());
 
-    // Step 3: Connect Factory to Chainlink
-    console.log("\n🔗 Connecting Factory to Chainlink...");
-    await voteFactory.setChainlinkIntegration(await chainlinkIntegration.getAddress());
-    console.log("✅ Chainlink integration set");
-
     // Step 4: Create a test vote
     console.log("\n🗳️  Creating test vote...");
-    const createTx = await voteFactory.createVoteWithChainlink(
+    const createTx = await voteFactory.createVote(
         "Best Blockchain Platform",
         "Vote for your favorite blockchain platform",
-        3, // 3 options: Option 1, Option 2, Option 3
-        24, // 24 hours duration
-        false, // Use highest vote winner (not random)
-        { value: ethers.parseEther("0.01") } // Small amount for testing
+        3 // 3 options: Option 1, Option 2, Option 3
     );
     await createTx.wait();
     
@@ -61,16 +97,26 @@ async function main() {
     console.log("=".repeat(60));
     console.log("📋 Contract Addresses:");
     console.log("   ChainlinkIntegration:", await chainlinkIntegration.getAddress());
-    console.log("   VoteFactory:        ", await voteFactory.getAddress());
-    console.log("   Test Vote:          ", testVoteAddress);
+    console.log("   TransferableNFT:     ", await transferableNFT.getAddress());
+    console.log("   SoulboundNFT:        ", await soulboundNFT.getAddress());
+    console.log("   VoteFactory:         ", await voteFactory.getAddress());
+    console.log("   Test Vote:           ", testVoteAddress);
+    
+    if (network.name === "sepolia") {
+        console.log("\n🔗 Sepolia Testnet Links:");
+        console.log("   Etherscan:", `https://sepolia.etherscan.io/address/${await voteFactory.getAddress()}`);
+        console.log("   Get Sepolia ETH:", "https://sepoliafaucet.com/");
+    }
+    
     console.log("\n📝 Next Steps:");
-    console.log("   1. Fund Chainlink subscription with LINK tokens");
-    console.log("   2. Add ChainlinkIntegration as consumer to VRF subscription");
-    console.log("   3. Test voting functionality");
-    console.log("   4. Monitor Chainlink automation");
+    console.log("   1. Test voting functionality");
+    console.log("   2. Verify contracts on Etherscan (optional)");
+    console.log("   3. Set up frontend integration");
     
     return {
         chainlinkIntegration: await chainlinkIntegration.getAddress(),
+        transferableNFT: await transferableNFT.getAddress(),
+        soulboundNFT: await soulboundNFT.getAddress(),
         voteFactory: await voteFactory.getAddress(),
         testVote: testVoteAddress
     };
@@ -84,6 +130,16 @@ main()
         process.exit(0);
     })
     .catch((error) => {
-        console.error("❌ Deployment failed:", error);
+        console.error("❌ Deployment failed:", error.message);
+        
+        if (error.message.includes("INFURA_PROJECT_ID") || error.message.includes("PRIVATE_KEY")) {
+            console.log("\n🔧 Setup Instructions:");
+            console.log("   1. Copy env.example to .env");
+            console.log("   2. Fill in your INFURA_PROJECT_ID and PRIVATE_KEY");
+            console.log("   3. Get Infura ID from: https://infura.io/");
+            console.log("   4. Export private key from MetaMask (Settings > Security & Privacy > Export Private Key)");
+            console.log("   5. Get Sepolia ETH from: https://sepoliafaucet.com/");
+        }
+        
         process.exit(1);
     }); 
