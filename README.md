@@ -38,14 +38,175 @@ A sophisticated blockchain-based voting system built with Solidity, featuring NF
 ### 🔄 Sequence Diagram
 The following diagram shows the complete voting flow from creation to winner selection:
 
-![Sequence Diagram](docs/sequence-diagram.png)
+```mermaid
+sequenceDiagram
+    participant User as "👤 User"
+    participant Factory as "🏭 VoteFactory"
+    participant Vote as "🗳️ Vote Contract"
+    participant NFT as "🎫 NFT Contract"
+    participant Chainlink as "🔗 Chainlink"
+    
+    Note over User,Chainlink: Voting System Sequence Flow
+    
+    User->>Factory: createVote(name, description, options, duration)
+    Factory->>NFT: deploy TransferableNFT/SoulboundNFT
+    NFT-->>Factory: nftAddress
+    Factory->>Chainlink: deploy ChainlinkIntegration
+    Chainlink-->>Factory: chainlinkAddress
+    Factory->>Vote: deploy Vote(params, nftAddress, chainlinkAddress)
+    Vote-->>Factory: voteAddress
+    Factory-->>User: voteAddress
+    
+    Note over User,Vote: Voting Phase
+    
+    User->>Vote: vote(optionNumber)
+    Vote->>NFT: addHolder(userAddress)
+    NFT-->>Vote: tokenId
+    Vote-->>User: VotedEvent(user, choice)
+    
+    Note over User,Vote: Vote Change (Optional)
+    
+    User->>Vote: changevote(newOption)
+    Vote->>Vote: updateVoteRecords()
+    Vote-->>User: VoteChangedEvent(user, fromChoice, toChoice)
+    
+    Note over Vote,Chainlink: Automated Vote Ending
+    
+    Chainlink->>Vote: checkUpkeep()
+    Vote-->>Chainlink: upkeepNeeded=true
+    Chainlink->>Vote: performUpkeep()
+    Vote->>Chainlink: requestRandomWinner()
+    Chainlink-->>Vote: fulfillRandomWords(randomNumber)
+    Vote->>Vote: processRandomWinner(randomNumber)
+    Vote->>NFT: returnWinner(winnerAddress)
+    NFT->>NFT: updateWinnerMetadata()
+    Vote-->>User: VoteEndedEvent(winner)
+```
 
 *This shows the interaction between users, contracts, and external services throughout the entire voting lifecycle.*
 
 ### 🏗️ Class Diagram
 The system architecture and contract relationships:
 
-![Class Diagram](docs/class-diagram.png)
+```mermaid
+classDiagram
+    class VoteBone {
+        <<abstract>>
+        +EndVote()
+        +GetWinner()
+        +GiveRewards()
+    }
+    
+    class Vote {
+        -state VoteState
+        -string i_VoteName
+        -string i_VoteDescribtion
+        -uint8 totalOptions
+        -mapping votersRecord
+        -uint256[] totalRecord
+        -INFTVoting nftVotingContract
+        -ChainlinkIntegration chainlinkIntegration
+        +vote(uint8 choice)
+        +changevote(uint8 choice)
+        +TotalVoteRecordGetter()
+        +determineWinner()
+        +rewardWinner()
+        +processRandomWinner(uint256)
+    }
+    
+    class VoteFactory {
+        -Vote[] allVotes
+        -mapping votesByCreator
+        +createVote(parameters)
+        +getAllVotes()
+        +getVotesByCreator(address)
+    }
+    
+    class INFTVoting {
+        <<interface>>
+        +addHolder(address)
+        +returnWinner(address)
+        +hasVotingRights(address)
+        +transferOwnership(address)
+    }
+    
+    class TransferableNFT {
+        -uint256 _tokenIds
+        -string voteName
+        -mapping tokenVotingPower
+        -mapping hasVotingRights
+        +addHolder(address)
+        +addHolderWithPower(address, uint256)
+        +batchMint(address[], uint256[])
+        +returnWinner(address)
+        +getTokenVotingPower(uint256)
+        +getTotalVotingPower(address)
+    }
+    
+    class SoulboundNFT {
+        -uint256 _tokenIds
+        -string voteName
+        -mapping hasVotingRights
+        -mapping tokenHolders
+        +addHolder(address)
+        +returnWinner(address)
+        +locked(uint256)
+        +_update() override
+    }
+    
+    class ChainlinkIntegration {
+        -mapping randomResults
+        -mapping pendingRequests
+        -mapping automationConfigs
+        +requestRandomWinner(address)
+        +configureAutomation(address, uint256)
+        +performUpkeep(address)
+        +getRandomResult(address)
+    }
+    
+    class ERC721 {
+        <<OpenZeppelin>>
+        +balanceOf(address)
+        +ownerOf(uint256)
+        +transferFrom(address, address, uint256)
+    }
+    
+    class ERC721URIStorage {
+        <<OpenZeppelin>>
+        +tokenURI(uint256)
+        +_setTokenURI(uint256, string)
+    }
+    
+    class Ownable {
+        <<OpenZeppelin>>
+        +owner()
+        +transferOwnership(address)
+        +onlyOwner modifier
+    }
+    
+    %% Inheritance relationships
+    VoteBone <|-- Vote
+    INFTVoting <|.. TransferableNFT
+    INFTVoting <|.. SoulboundNFT
+    ERC721 <|-- TransferableNFT
+    ERC721URIStorage <|-- TransferableNFT
+    Ownable <|-- TransferableNFT
+    ERC721 <|-- SoulboundNFT
+    ERC721URIStorage <|-- SoulboundNFT
+    Ownable <|-- SoulboundNFT
+    Ownable <|-- ChainlinkIntegration
+    
+    %% Composition relationships
+    VoteFactory o-- Vote : creates
+    Vote o-- INFTVoting : uses
+    Vote o-- ChainlinkIntegration : uses
+    
+    %% Notes
+    note for Vote "Core voting logic with<br/>NFT and Chainlink integration"
+    note for VoteFactory "Factory pattern for<br/>creating multiple votes"
+    note for TransferableNFT "ERC-721 tokens that<br/>can be traded"
+    note for SoulboundNFT "ERC-5192 non-transferable<br/>tokens (soulbound)"
+```
 
 *This illustrates the inheritance hierarchy, interface implementations, and composition relationships between all contracts.*
 
@@ -86,7 +247,48 @@ npx hardhat compile
 ### 📊 Deployment Architecture
 The deployment process follows a structured approach:
 
-![Deployment Flow](docs/deployment-diagram.png)
+```mermaid
+flowchart TD
+    A[📋 Start Deployment] --> B{Environment?}
+    
+    B -->|Local| C[🚀 Start Hardhat Node]
+    B -->|Testnet| D[🌐 Configure Network]
+    B -->|Mainnet| E[⚠️ Production Setup]
+    
+    C --> F[📝 Compile Contracts]
+    D --> F
+    E --> F
+    
+    F --> G[🔧 Deploy Chainlink Integration]
+    G --> H[🎫 Deploy NFT Contracts]
+    H --> I{NFT Type?}
+    
+    I -->|Transferable| J[📦 Deploy TransferableNFT]
+    I -->|Soulbound| K[🔒 Deploy SoulboundNFT]
+    I -->|Both| L[📦🔒 Deploy Both Types]
+    
+    J --> M[🏭 Deploy VoteFactory]
+    K --> M
+    L --> M
+    
+    M --> N[🗳️ Create First Vote]
+    N --> O[✅ System Ready]
+    
+    O --> P[🧪 Run Tests]
+    P --> Q{Tests Pass?}
+    
+    Q -->|✅ Yes| R[🎉 Deployment Complete]
+    Q -->|❌ No| S[🔍 Debug Issues]
+    S --> F
+    
+    R --> T[📊 Monitor & Manage]
+    
+    style A fill:#e1f5fe
+    style R fill:#c8e6c9
+    style S fill:#ffcdd2
+    style O fill:#fff3e0
+    style T fill:#f3e5f5
+```
 
 *This flowchart shows the complete deployment process from initial setup to production monitoring.*
 
@@ -200,21 +402,45 @@ const allVotes = await factory.getAllVotes();
 
 ### Test Scripts Available
 
-1. **simple-test.js**: Basic voting functionality test
-2. **test.js**: Comprehensive test with NFT and Chainlink integration
-3. **deploy.js**: Full deployment script with all contracts
+1. **simple-test.js**: Basic voting functionality test (no NFT/Chainlink)
+2. **nft-test.js**: Comprehensive NFT voting system test ⭐ **NEW**
+3. **test.js**: Full test suite with all integrations
+4. **deploy.js**: Complete deployment script with all contracts
 
 ### Running Tests
 ```bash
 # Simple test (recommended for first run)
 node simple-test.js
 
-# Full test suite
+# NFT voting test (demonstrates NFT integration) ⭐ 
+node nft-test.js
+
+# Full test suite with all features
 npx hardhat run test.js --network localhost
 
 # Deploy all contracts
 npx hardhat run deploy.js --network localhost
 ```
+
+### 🎫 NFT Test Results
+The NFT integration test demonstrates:
+
+✅ **Transferable NFT Features:**
+- Automatic NFT minting when users vote
+- Voting rights transfer with NFT ownership
+- Custom voting power per NFT (1x, 3x, 5x, 10x)
+- Batch minting functionality
+
+✅ **Soulbound NFT Features:**
+- Permanent voting rights (non-transferable)
+- Transfer prevention (ERC-5192 compliance)
+- Lifetime membership tokens
+
+✅ **Integration Results:**
+- Vote Contract 1: `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`
+- Vote Contract 2: `0x5FC8d32690cc91D4c39d9d3abcBD16989F875707`
+- TransferableNFT: `0x5FbDB2315678afecb367f032d93F642f64180aa3`
+- SoulboundNFT: `0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9`
 
 ## 📁 Project Structure
 
@@ -230,7 +456,8 @@ Vote_solidity/
 ├── test/                   # Test files
 ├── deploy.js              # Deployment script
 ├── test.js               # Full test suite
-├── simple-test.js        # Simplified test
+├── simple-test.js        # Basic voting test
+├── nft-test.js           # NFT integration test ⭐
 ├── package.json          # Dependencies
 ├── hardhat.config.js     # Hardhat configuration
 └── README.md             # This file
