@@ -117,11 +117,13 @@ contract ChainlinkIntegration is Ownable {
         config.executed = true;
         config.isActive = false;
         
-        // Generate and process random number immediately
-        uint256 requestId = uint256(keccak256(abi.encodePacked(block.timestamp, voteContract))) % 1000000;
-        fulfillRandomWords(requestId, voteContract);
+        // End the vote first, then process winner
+        (bool success, ) = voteContract.call(
+            abi.encodeWithSignature("endVoteAutomatically()")
+        );
+        require(success, "Failed to end vote");
         
-        emit VoteEnded(voteContract, requestId);
+        emit VoteEnded(voteContract, 0);
     }
 
     /**

@@ -215,4 +215,37 @@ contract Vote is VoteBone {
             _selectHighestVoteWinner();
         }
     }
+    
+    /**
+     * @dev End the vote manually (only callable after end time)
+     */
+    function endVote() external {
+        require(VoteState == state.Open, "Vote is already closed");
+        require(block.timestamp >= voteEndTime, "Vote has not ended yet");
+        
+        VoteState = state.Close;
+        _processVoteEnd();
+    }
+    
+    /**
+     * @dev End vote automatically (called by Chainlink automation)
+     */
+    function endVoteAutomatically() external {
+        require(msg.sender == address(chainlinkIntegration), "Only Chainlink can call this");
+        require(VoteState == state.Open, "Vote is already closed");
+        
+        VoteState = state.Close;
+        _processVoteEnd();
+    }
+    
+    /**
+     * @dev Internal function to process vote ending
+     */
+    function _processVoteEnd() internal {
+        if (address(chainlinkIntegration) != address(0) && useRandomWinner) {
+            chainlinkIntegration.requestRandomWinner(address(this));
+        } else {
+            _selectHighestVoteWinner();
+        }
+    }
 }
