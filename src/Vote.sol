@@ -43,6 +43,7 @@ contract Vote is VoteBone {
     event Voted(address indexed voter, uint8 choice);
     event VoteChanged(address indexed voter, uint8 fromChoice, uint8 toChoice);
     event VoteTransferred(address indexed from, address indexed to, uint8 choice);
+    event VoteCleared(address indexed voter, uint8 clearedChoice);
 
     constructor(
         string memory _VoteName,
@@ -275,5 +276,24 @@ contract Vote is VoteBone {
             
             emit VoteTransferred(from, to, voteChoice);
         }
+    }
+
+    /**
+     * @dev Clear inherited vote record (only for current NFT holders)
+     * @dev Allows new NFT owners to start fresh if they disagree with inherited vote
+     */
+    function clearInheritedVote() external {
+        require(VoteState == state.Open, "Vote is not open");
+        require(address(nftVotingContract) != address(0), "No NFT integration");
+        require(INFTVoting(nftVotingContract).hasVotingRights(msg.sender), "No voting rights");
+        
+        uint8 currentVote = votersRecord[msg.sender];
+        require(currentVote > 0, "No vote to clear");
+        
+        // Clear the vote record and decrease total count
+        votersRecord[msg.sender] = 0;
+        totalRecord[currentVote] -= 1;
+        
+        emit VoteCleared(msg.sender, currentVote);
     }
 }
