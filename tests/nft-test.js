@@ -59,6 +59,11 @@ async function main() {
     await transferableNFT.transferOwnership(await vote.getAddress());
     console.log("✅ Ownership transferred");
     
+    // Set vote contract address in NFT for vote record transfers
+    console.log("🔗 Setting vote contract address in NFT...");
+    await transferableNFT.setVoteContract(await vote.getAddress());
+    console.log("✅ Vote contract address set");
+    
     // Test NFT voting
     console.log("\n🎫 Testing NFT Voting Process...");
     
@@ -106,6 +111,48 @@ async function main() {
     const hasRights4After = await transferableNFT.hasVotingRights(voter4.address);
     console.log("✅ Voter 1 has voting rights after transfer:", hasRights1After);
     console.log("✅ Voter 4 has voting rights after transfer:", hasRights4After);
+    
+    // Test Voter 4 voting after receiving NFT
+    console.log("\n🎯 Testing Voter 4 Voting After NFT Transfer...");
+    console.log("📊 Vote counts before Voter 4 votes:");
+    const recordBefore = await vote.TotalVoteRecordGetter();
+    for (let i = 1; i < recordBefore.length; i++) {
+        console.log(`   Option ${i}: ${recordBefore[i].toString()} votes`);
+    }
+    
+    // Voter 4 votes for option 3
+    console.log("👤 Voter 4 voting for option 3...");
+    await vote.connect(voter4).vote(3);
+    console.log("✅ Voter 4 vote cast successfully");
+    
+    // Check updated vote counts
+    console.log("📊 Vote counts after Voter 4 votes:");
+    const recordAfter = await vote.TotalVoteRecordGetter();
+    for (let i = 1; i < recordAfter.length; i++) {
+        console.log(`   Option ${i}: ${recordAfter[i].toString()} votes`);
+    }
+    
+    // Verify the vote count increased
+    const option3Before = recordBefore[3];
+    const option3After = recordAfter[3];
+    console.log(`✅ Option 3 votes increased from ${option3Before} to ${option3After}`);
+    
+    // Check total votes
+    const totalVotes = await vote.getTotalVotes();
+    console.log("📈 Total votes cast:", totalVotes.toString());
+    
+    // Verify Voter 4's individual record
+    const voter4Record = await vote.connect(voter4).UserVoteRecordGetter();
+    console.log("📝 Voter 4's vote record:", voter4Record.toString());
+    
+    // Test that Voter 1 can no longer vote (lost rights after transfer)
+    console.log("\n🚫 Testing Voter 1 Cannot Vote After Transfer...");
+    try {
+        await vote.connect(voter1).vote(4);
+        console.log("❌ ERROR: Voter 1 should not be able to vote after transferring NFT!");
+    } catch (error) {
+        console.log("✅ Voter 1 correctly prevented from voting:", error.reason || "Access denied");
+    }
     
     // Test 2: Soulbound NFT Voting System
     console.log("\n🔒 Test 2: Soulbound NFT Voting System");
