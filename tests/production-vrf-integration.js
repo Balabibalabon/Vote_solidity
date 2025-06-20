@@ -83,6 +83,7 @@ async function simulateVRFCoordinatorInteraction() {
     console.log("-".repeat(50));
     
     const [deployer] = await ethers.getSigners();
+    const deployerAddress = await deployer.getAddress();
     const config = NETWORK_CONFIG.sepolia; // Use Sepolia config for simulation
     
     console.log("🔧 VRF Coordinator Configuration:");
@@ -107,7 +108,7 @@ async function simulateVRFCoordinatorInteraction() {
     const mockSubscriptionData = {
         balance: ethers.parseEther("5.0"), // 5 LINK
         reqCount: 10,
-        owner: deployer.address,
+        owner: deployerAddress,
         consumers: ["0x1234...5678", "0x9abc...def0"]
     };
     
@@ -353,6 +354,7 @@ async function runProductionIntegration() {
     
     const subscriptionId = parseInt(process.env.VRF_SUBSCRIPTION_ID);
     const [deployer] = await ethers.getSigners();
+    const deployerAddress = await deployer.getAddress();
     
     console.log("🔧 Production Configuration:");
     console.log("   Network:", networkName);
@@ -360,7 +362,7 @@ async function runProductionIntegration() {
     console.log("   VRF Coordinator:", config.vrfCoordinator);
     console.log("   LINK Token:", config.linkToken);
     console.log("   Subscription ID:", subscriptionId);
-    console.log("   Deployer:", deployer.address);
+    console.log("   Deployer:", deployerAddress);
     console.log("");
     
     // Connect to real VRF Coordinator

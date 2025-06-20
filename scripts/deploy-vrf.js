@@ -41,8 +41,9 @@ async function main() {
     const config = VRF_CONFIG[networkName] || VRF_CONFIG.localhost;
     
     console.log("🌐 Network:", networkName);
-    console.log("👤 Deployer:", deployer.address);
-    console.log("💰 Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH");
+    const deployerAddress = await deployer.getAddress();
+    console.log("👤 Deployer:", deployerAddress);
+    console.log("💰 Balance:", ethers.formatEther(await ethers.provider.getBalance(deployerAddress)), "ETH");
     console.log("🔧 Use Mock VRF:", config.useMock);
     console.log("");
     
@@ -191,7 +192,7 @@ async function main() {
     const deploymentInfo = {
         network: networkName,
         timestamp: new Date().toISOString(),
-        deployer: deployer.address,
+        deployer: deployerAddress,
         contracts: {
             mockVRFCoordinator: mockVRFCoordinator ? await mockVRFCoordinator.getAddress() : null,
             chainlinkVRF: await vrfContract.getAddress(),

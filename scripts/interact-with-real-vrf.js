@@ -76,11 +76,12 @@ async function main() {
     console.log("");
     
     const [deployer] = await ethers.getSigners();
-    console.log("👤 Your address:", deployer.address);
-    console.log("💰 ETH Balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)));
+    const deployerAddress = await deployer.getAddress();
+    console.log("👤 Your address:", deployerAddress);
+    console.log("💰 ETH Balance:", ethers.formatEther(await ethers.provider.getBalance(deployerAddress)));
     
     // Check LINK balance
-    await checkLINKBalance(deployer.address, config);
+    await checkLINKBalance(deployerAddress, config);
     
     console.log("\n📋 What would you like to do?");
     console.log("1. Check VRF subscription status");
@@ -272,10 +273,11 @@ async function addConsumerToSubscription(config) {
         console.log("🔍 Checking subscription ownership...");
         const subscription = await vrfCoordinator.getSubscription(parseInt(subscriptionId));
         
-        if (subscription.owner.toLowerCase() !== deployer.address.toLowerCase()) {
+        const deployerAddress = await deployer.getAddress();
+        if (subscription.owner.toLowerCase() !== deployerAddress.toLowerCase()) {
             console.log("❌ You are not the owner of this subscription");
             console.log("👤 Subscription owner:", subscription.owner);
-            console.log("👤 Your address:", deployer.address);
+            console.log("👤 Your address:", deployerAddress);
             console.log("💡 Use the VRF UI instead: https://vrf.chain.link/");
             return;
         }
@@ -513,13 +515,14 @@ async function fullSetupWalkthrough(config) {
     console.log("-".repeat(30));
     
     const [deployer] = await ethers.getSigners();
-    const ethBalance = await ethers.provider.getBalance(deployer.address);
+    const deployerAddress = await deployer.getAddress();
+    const ethBalance = await ethers.provider.getBalance(deployerAddress);
     
     console.log("✅ Network:", config.name);
-    console.log("✅ Your address:", deployer.address);
+    console.log("✅ Your address:", deployerAddress);
     console.log("💰 ETH balance:", ethers.formatEther(ethBalance));
     
-    await checkLINKBalance(deployer.address, config);
+    await checkLINKBalance(deployerAddress, config);
     
     if (parseFloat(ethers.formatEther(ethBalance)) < 0.01) {
         console.log("❌ Insufficient ETH for transactions");
