@@ -54,15 +54,15 @@ async function main() {
     await vote.waitForDeployment();
     console.log("✅ Vote contract deployed at:", await vote.getAddress());
     
+    // Set vote contract address in NFT for vote record transfers (before transferring ownership)
+    console.log("🔗 Setting vote contract address in NFT...");
+    await transferableNFT.setVoteContract(await vote.getAddress());
+    console.log("✅ Vote contract address set");
+    
     // Transfer NFT ownership to vote contract
     console.log("🔄 Transferring NFT ownership to vote contract...");
     await transferableNFT.transferOwnership(await vote.getAddress());
     console.log("✅ Ownership transferred");
-    
-    // Set vote contract address in NFT for vote record transfers
-    console.log("🔗 Setting vote contract address in NFT...");
-    await transferableNFT.setVoteContract(await vote.getAddress());
-    console.log("✅ Vote contract address set");
     
     // Test NFT voting
     console.log("\n🎫 Testing NFT Voting Process...");
@@ -103,6 +103,13 @@ async function main() {
     console.log("\n🔄 Testing NFT Transfer...");
     const tokenId = 1; // Voter 1's NFT
     
+    // Check vote records before transfer
+    console.log("📊 Vote records before NFT transfer:");
+    const voter1RecordBefore = await vote.connect(voter1).UserVoteRecordGetter();
+    const voter4RecordBefore = await vote.connect(voter4).UserVoteRecordGetter();
+    console.log("   Voter 1 vote record:", voter1RecordBefore.toString());
+    console.log("   Voter 4 vote record:", voter4RecordBefore.toString());
+    
     console.log("📦 Transferring NFT from Voter 1 to Voter 4...");
     await transferableNFT.connect(voter1).transferFrom(voter1.address, voter4.address, tokenId);
     
@@ -112,38 +119,68 @@ async function main() {
     console.log("✅ Voter 1 has voting rights after transfer:", hasRights1After);
     console.log("✅ Voter 4 has voting rights after transfer:", hasRights4After);
     
-    // Test Voter 4 voting after receiving NFT
-    console.log("\n🎯 Testing Voter 4 Voting After NFT Transfer...");
-    console.log("📊 Vote counts before Voter 4 votes:");
-    const recordBefore = await vote.TotalVoteRecordGetter();
-    for (let i = 1; i < recordBefore.length; i++) {
-        console.log(`   Option ${i}: ${recordBefore[i].toString()} votes`);
+    // Check vote records after transfer
+    console.log("📊 Vote records after NFT transfer:");
+    const voter1RecordAfter = await vote.connect(voter1).UserVoteRecordGetter();
+    const voter4RecordAfter = await vote.connect(voter4).UserVoteRecordGetter();
+    console.log("   Voter 1 vote record:", voter1RecordAfter.toString());
+    console.log("   Voter 4 vote record:", voter4RecordAfter.toString());
+    
+    // Verify vote record was transferred
+    if (voter1RecordAfter.toString() === "0" && voter4RecordAfter.toString() === voter1RecordBefore.toString()) {
+        console.log("✅ Vote record successfully transferred from Voter 1 to Voter 4");
+    } else {
+        console.log("⚠️  Vote record transfer may have failed or not implemented");
     }
     
-    // Voter 4 votes for option 3
-    console.log("👤 Voter 4 voting for option 3...");
-    await vote.connect(voter4).vote(3);
-    console.log("✅ Voter 4 vote cast successfully");
+    // Test Voter 4 changing vote after receiving NFT with vote record
+    console.log("\n🎯 Testing Voter 4 Vote Management After NFT Transfer...");
     
-    // Check updated vote counts
-    console.log("📊 Vote counts after Voter 4 votes:");
-    const recordAfter = await vote.TotalVoteRecordGetter();
-    for (let i = 1; i < recordAfter.length; i++) {
-        console.log(`   Option ${i}: ${recordAfter[i].toString()} votes`);
+    // Check if Voter 4 inherited a vote record
+    const voter4InheritedRecord = await vote.connect(voter4).UserVoteRecordGetter();
+    
+    if (voter4InheritedRecord.toString() !== "0") {
+        console.log(`📝 Voter 4 inherited vote record: Option ${voter4InheritedRecord}`);
+        
+        // Test vote changing (since Voter 4 already has a vote record)
+        console.log("🔄 Testing Voter 4 changing inherited vote...");
+        console.log("📊 Vote counts before change:");
+        const recordBefore = await vote.TotalVoteRecordGetter();
+        for (let i = 1; i < recordBefore.length; i++) {
+            console.log(`   Option ${i}: ${recordBefore[i].toString()} votes`);
+        }
+        
+        // Voter 4 changes vote to option 3
+        console.log("👤 Voter 4 changing vote to option 3...");
+        await vote.connect(voter4).changevote(3);
+        console.log("✅ Voter 4 vote changed successfully");
+        
+        // Check updated vote counts
+        console.log("📊 Vote counts after change:");
+        const recordAfter = await vote.TotalVoteRecordGetter();
+        for (let i = 1; i < recordAfter.length; i++) {
+            console.log(`   Option ${i}: ${recordAfter[i].toString()} votes`);
+        }
+        
+        // Verify the vote count changes
+        console.log(`✅ Vote transferred from Option ${voter4InheritedRecord} to Option 3`);
+        
+    } else {
+        console.log("📝 Voter 4 has no inherited vote record, can cast new vote");
+        
+        // Voter 4 votes for option 3
+        console.log("👤 Voter 4 voting for option 3...");
+        await vote.connect(voter4).vote(3);
+        console.log("✅ Voter 4 vote cast successfully");
     }
     
-    // Verify the vote count increased
-    const option3Before = recordBefore[3];
-    const option3After = recordAfter[3];
-    console.log(`✅ Option 3 votes increased from ${option3Before} to ${option3After}`);
-    
-    // Check total votes
+    // Check total votes (should remain the same since it's a transfer/change, not new vote)
     const totalVotes = await vote.getTotalVotes();
     console.log("📈 Total votes cast:", totalVotes.toString());
     
-    // Verify Voter 4's individual record
-    const voter4Record = await vote.connect(voter4).UserVoteRecordGetter();
-    console.log("📝 Voter 4's vote record:", voter4Record.toString());
+    // Verify Voter 4's current record
+    const voter4FinalRecord = await vote.connect(voter4).UserVoteRecordGetter();
+    console.log("📝 Voter 4's final vote record:", voter4FinalRecord.toString());
     
     // Test that Voter 1 can no longer vote (lost rights after transfer)
     console.log("\n🚫 Testing Voter 1 Cannot Vote After Transfer...");

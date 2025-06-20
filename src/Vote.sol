@@ -42,6 +42,7 @@ contract Vote is VoteBone {
     /////////////
     event Voted(address indexed voter, uint8 choice);
     event VoteChanged(address indexed voter, uint8 fromChoice, uint8 toChoice);
+    event VoteTransferred(address indexed from, address indexed to, uint8 choice);
 
     constructor(
         string memory _VoteName,
@@ -246,6 +247,33 @@ contract Vote is VoteBone {
             chainlinkIntegration.requestRandomWinner(address(this));
         } else {
             _selectHighestVoteWinner();
+        }
+    }
+
+    /**
+     * @dev Transfer vote record when NFT is transferred (called by NFT contract)
+     * @param from Previous voter address
+     * @param to New voter address
+     */
+    function transferVoteRecord(address from, address to) external {
+        require(msg.sender == address(nftVotingContract), "Only NFT contract can call this");
+        require(VoteState == state.Open, "Cannot transfer votes after voting ends");
+        
+        // Get the vote record from the previous holder
+        uint8 voteChoice = votersRecord[from];
+        
+        // Only transfer if there was a vote record
+        if (voteChoice > 0) {
+            // Remove vote record from previous holder
+            votersRecord[from] = 0;
+            
+            // Transfer vote record to new holder
+            votersRecord[to] = voteChoice;
+            
+            // Note: totalRecord doesn't change since the vote just transferred ownership
+            // The vote count remains the same, just under different ownership
+            
+            emit VoteTransferred(from, to, voteChoice);
         }
     }
 }
