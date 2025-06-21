@@ -8,6 +8,14 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./INFTVoting.sol";
 
 /**
+ * @title IVote
+ * @notice Interface for Vote contract to transfer vote records
+ */
+interface IVote {
+    function transferVoteRecord(address from, address to) external;
+}
+
+/**
  * @title TransferableNFT
  * @notice ERC-721 contract for tradeable voting rights tokens
  */
@@ -28,6 +36,9 @@ contract TransferableNFT is ERC721, ERC721URIStorage, Ownable, INFTVoting {
     
     // Default voting power for new tokens
     uint256 public constant DEFAULT_VOTING_POWER = 1;
+    
+    // Address of the associated Vote contract for transferring vote records
+    address public voteContract;
     
     // Event emitted when a holder is added
     event HolderAdded(address indexed holder, uint256 tokenId, uint256 votingPower);
@@ -129,6 +140,16 @@ contract TransferableNFT is ERC721, ERC721URIStorage, Ownable, INFTVoting {
             // Remove voting rights from previous owner if they have no more tokens
             if (balanceOf(from) == 1) { // Will be 0 after transfer
                 hasVotingRights[from] = false;
+                
+                // Transfer vote record to new owner if vote contract is set
+                if (to != address(0) && voteContract != address(0)) {
+                    try IVote(voteContract).transferVoteRecord(from, to) {
+                        // Vote record transferred successfully
+                    } catch {
+                        // Vote transfer failed (voting may be closed or no record exists)
+                        // This is not critical, so we continue with the NFT transfer
+                    }
+                }
             }
         }
         
@@ -139,6 +160,14 @@ contract TransferableNFT is ERC721, ERC721URIStorage, Ownable, INFTVoting {
         }
         
         return super._update(to, tokenId, auth);
+    }
+    
+    /**
+     * @notice Set the associated vote contract address (only owner)
+     * @param _voteContract Address of the Vote contract
+     */
+    function setVoteContract(address _voteContract) external onlyOwner {
+        voteContract = _voteContract;
     }
     
     /**

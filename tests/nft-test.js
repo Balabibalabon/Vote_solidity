@@ -54,6 +54,11 @@ async function main() {
     await vote.waitForDeployment();
     console.log("✅ Vote contract deployed at:", await vote.getAddress());
     
+    // Set vote contract address in NFT for vote record transfers (before transferring ownership)
+    console.log("🔗 Setting vote contract address in NFT...");
+    await transferableNFT.setVoteContract(await vote.getAddress());
+    console.log("✅ Vote contract address set");
+    
     // Transfer NFT ownership to vote contract
     console.log("🔄 Transferring NFT ownership to vote contract...");
     await transferableNFT.transferOwnership(await vote.getAddress());
@@ -98,6 +103,13 @@ async function main() {
     console.log("\n🔄 Testing NFT Transfer...");
     const tokenId = 1; // Voter 1's NFT
     
+    // Check vote records before transfer
+    console.log("📊 Vote records before NFT transfer:");
+    const voter1RecordBefore = await vote.connect(voter1).UserVoteRecordGetter();
+    const voter4RecordBefore = await vote.connect(voter4).UserVoteRecordGetter();
+    console.log("   Voter 1 vote record:", voter1RecordBefore.toString());
+    console.log("   Voter 4 vote record:", voter4RecordBefore.toString());
+    
     console.log("📦 Transferring NFT from Voter 1 to Voter 4...");
     await transferableNFT.connect(voter1).transferFrom(voter1.address, voter4.address, tokenId);
     
@@ -106,6 +118,216 @@ async function main() {
     const hasRights4After = await transferableNFT.hasVotingRights(voter4.address);
     console.log("✅ Voter 1 has voting rights after transfer:", hasRights1After);
     console.log("✅ Voter 4 has voting rights after transfer:", hasRights4After);
+    
+    // Check vote records after transfer
+    console.log("📊 Vote records after NFT transfer:");
+    const voter1RecordAfter = await vote.connect(voter1).UserVoteRecordGetter();
+    const voter4RecordAfter = await vote.connect(voter4).UserVoteRecordGetter();
+    console.log("   Voter 1 vote record:", voter1RecordAfter.toString());
+    console.log("   Voter 4 vote record:", voter4RecordAfter.toString());
+    
+    // Verify vote record was transferred
+    if (voter1RecordAfter.toString() === "0" && voter4RecordAfter.toString() === voter1RecordBefore.toString()) {
+        console.log("✅ Vote record successfully transferred from Voter 1 to Voter 4");
+    } else {
+        console.log("⚠️  Vote record transfer may have failed or not implemented");
+    }
+    
+    // Test Voter 4 changing vote after receiving NFT with vote record
+    console.log("\n🎯 Testing Voter 4 Vote Management After NFT Transfer...");
+    
+    // Check if Voter 4 inherited a vote record
+    const voter4InheritedRecord = await vote.connect(voter4).UserVoteRecordGetter();
+    
+    if (voter4InheritedRecord.toString() !== "0") {
+        console.log(`📝 Voter 4 inherited vote record: Option ${voter4InheritedRecord}`);
+        
+        // Test vote changing (since Voter 4 already has a vote record)
+        console.log("🔄 Testing Voter 4 changing inherited vote...");
+        console.log("📊 Vote counts before change:");
+        const recordBefore = await vote.TotalVoteRecordGetter();
+        for (let i = 1; i < recordBefore.length; i++) {
+            console.log(`   Option ${i}: ${recordBefore[i].toString()} votes`);
+        }
+        
+        // Voter 4 changes vote to option 3
+        console.log("👤 Voter 4 changing vote to option 3...");
+        await vote.connect(voter4).changevote(3);
+        console.log("✅ Voter 4 vote changed successfully");
+        
+        // Check updated vote counts
+        console.log("📊 Vote counts after change:");
+        const recordAfter = await vote.TotalVoteRecordGetter();
+        for (let i = 1; i < recordAfter.length; i++) {
+            console.log(`   Option ${i}: ${recordAfter[i].toString()} votes`);
+        }
+        
+        // Verify the vote count changes
+        console.log(`✅ Vote transferred from Option ${voter4InheritedRecord} to Option 3`);
+        
+    } else {
+        console.log("📝 Voter 4 has no inherited vote record, can cast new vote");
+        
+        // Voter 4 votes for option 3
+        console.log("👤 Voter 4 voting for option 3...");
+        await vote.connect(voter4).vote(3);
+        console.log("✅ Voter 4 vote cast successfully");
+    }
+    
+    // Check total votes (should remain the same since it's a transfer/change, not new vote)
+    const totalVotes = await vote.getTotalVotes();
+    console.log("📈 Total votes cast:", totalVotes.toString());
+    
+    // Verify Voter 4's current record
+    const voter4FinalRecord = await vote.connect(voter4).UserVoteRecordGetter();
+    console.log("📝 Voter 4's final vote record:", voter4FinalRecord.toString());
+    
+    // Test that Voter 1 can no longer vote (lost rights after transfer)
+    console.log("\n🚫 Testing Voter 1 Cannot Vote After Transfer...");
+    try {
+        await vote.connect(voter1).vote(4);
+        console.log("❌ ERROR: Voter 1 should not be able to vote after transferring NFT!");
+    } catch (error) {
+        console.log("✅ Voter 1 correctly prevented from voting:", error.reason || "Access denied");
+    }
+    
+    // Test Voter 4's Three Options After Inheriting Vote
+    console.log("\n🎯 Testing Voter 4's Three Options After Inheriting Vote...");
+    console.log("=" .repeat(60));
+    
+    // Deploy a new NFT contract and vote for testing the three options
+    console.log("🗳️  Creating new NFT and vote for testing Voter 4's options...");
+    
+    // Deploy new TransferableNFT for this test
+    const testNFT = await TransferableNFT.deploy(
+        "Test Governance",
+        "Testing three options NFT"
+    );
+    await testNFT.waitForDeployment();
+    console.log("✅ Test NFT deployed at:", await testNFT.getAddress());
+    
+    // Deploy new vote contract
+    const testVote = await Vote.deploy(
+        "Option Testing Vote",
+        "Testing three options for inherited votes",
+        4, // 4 options
+        await testNFT.getAddress(),
+        await chainlink.getAddress(),
+        48, // 48 hours
+        false // No random winner
+    );
+    await testVote.waitForDeployment();
+    console.log("✅ Test vote deployed at:", await testVote.getAddress());
+    
+    // Set up the new NFT contract
+    console.log("🔗 Setting up test NFT contract...");
+    await testNFT.setVoteContract(await testVote.getAddress());
+    await testNFT.transferOwnership(await testVote.getAddress());
+    console.log("✅ Test NFT setup complete");
+    
+    // Create test scenario: Voter 1 votes, then transfers NFT to Voter 4
+    console.log("\n📋 Setting up test scenario...");
+    
+    // Voter 1 votes for Option 2
+    console.log("👤 Voter 1 voting for Option 2...");
+    await testVote.connect(voter1).vote(2);
+    
+    // Check initial state
+    const initialRecord = await testVote.TotalVoteRecordGetter();
+    console.log("📊 Initial vote counts:");
+    for (let i = 1; i < initialRecord.length; i++) {
+        console.log(`   Option ${i}: ${initialRecord[i].toString()} votes`);
+    }
+    
+    // Transfer NFT from Voter 1 to Voter 4 (this should transfer vote record)
+    console.log("\n🔄 Transferring NFT and vote record...");
+    const testTokenId = 1; // Voter 1's NFT in the test contract
+    await testNFT.connect(voter1).transferFrom(voter1.address, voter4.address, testTokenId);
+    
+    // Check Voter 4's inherited vote
+    const voter4InheritedVote = await testVote.connect(voter4).UserVoteRecordGetter();
+    console.log(`📝 Voter 4 inherited vote: Option ${voter4InheritedVote}`);
+    
+    // Now test all three options for Voter 4
+    
+    // Option A: Keep Inherited Vote (Do Nothing)
+    console.log("\n🔸 Option A: Keep Inherited Vote (Default Behavior)");
+    console.log("   Voter 4 chooses to keep the inherited vote for Option 2");
+    console.log("   No action needed - vote remains as inherited");
+    
+    const keepRecord = await testVote.TotalVoteRecordGetter();
+    console.log("📊 Vote counts (keeping inherited vote):");
+    for (let i = 1; i < keepRecord.length; i++) {
+        console.log(`   Option ${i}: ${keepRecord[i].toString()} votes`);
+    }
+    
+    // Option B: Change Inherited Vote
+    console.log("\n🔸 Option B: Change Inherited Vote");
+    console.log("   Voter 4 disagrees with Option 2, wants to change to Option 3");
+    
+    await testVote.connect(voter4).changevote(3);
+    console.log("✅ Vote changed from Option 2 to Option 3");
+    
+    const changedRecord = await testVote.TotalVoteRecordGetter();
+    console.log("📊 Vote counts (after changing vote):");
+    for (let i = 1; i < changedRecord.length; i++) {
+        console.log(`   Option ${i}: ${changedRecord[i].toString()} votes`);
+    }
+    
+    // Check Voter 4's current vote
+    const voter4ChangedVote = await testVote.connect(voter4).UserVoteRecordGetter();
+    console.log(`📝 Voter 4's current vote: Option ${voter4ChangedVote}`);
+    
+    // Option C: Clear Inherited Vote (Start Fresh)
+    console.log("\n🔸 Option C: Clear Inherited Vote (Start Fresh)");
+    console.log("   Voter 4 wants to completely remove inherited vote and start fresh");
+    
+    await testVote.connect(voter4).clearInheritedVote();
+    console.log("✅ Inherited vote cleared");
+    
+    const clearedRecord = await testVote.TotalVoteRecordGetter();
+    console.log("📊 Vote counts (after clearing vote):");
+    for (let i = 1; i < clearedRecord.length; i++) {
+        console.log(`   Option ${i}: ${clearedRecord[i].toString()} votes`);
+    }
+    
+    // Check Voter 4's vote record after clearing
+    const voter4ClearedVote = await testVote.connect(voter4).UserVoteRecordGetter();
+    console.log(`📝 Voter 4's vote record after clearing: ${voter4ClearedVote} (0 = no vote)`);
+    
+    // Now Voter 4 can vote fresh
+    console.log("\n🆕 Voter 4 can now vote fresh after clearing...");
+    await testVote.connect(voter4).vote(4);
+    console.log("✅ Voter 4 cast fresh vote for Option 4");
+    
+    const freshRecord = await testVote.TotalVoteRecordGetter();
+    console.log("📊 Final vote counts (after fresh vote):");
+    for (let i = 1; i < freshRecord.length; i++) {
+        console.log(`   Option ${i}: ${freshRecord[i].toString()} votes`);
+    }
+    
+    const voter4FreshVote = await testVote.connect(voter4).UserVoteRecordGetter();
+    console.log(`📝 Voter 4's final vote: Option ${voter4FreshVote}`);
+    
+    // Summary of the three options
+    console.log("\n📋 Summary of Voter 4's Three Options:");
+    console.log("=" .repeat(60));
+    console.log("🔸 Option A: Keep Inherited Vote");
+    console.log("   • Do nothing, inherit previous owner's choice");
+    console.log("   • Maintains governance continuity");
+    console.log("   • Vote counts remain stable");
+    console.log("");
+    console.log("🔸 Option B: Change Inherited Vote");
+    console.log("   • Use changevote() to switch to preferred option");
+    console.log("   • Maintains total vote count, just shifts distribution");
+    console.log("   • Allows disagreement while keeping participation");
+    console.log("");
+    console.log("🔸 Option C: Clear and Vote Fresh");
+    console.log("   • Use clearInheritedVote() to remove inherited choice");
+    console.log("   • Then use vote() to cast completely new vote");
+    console.log("   • Gives complete autonomy but may temporarily reduce participation");
+    console.log("");
+    console.log("✅ All three options tested successfully!");
     
     // Test 2: Soulbound NFT Voting System
     console.log("\n🔒 Test 2: Soulbound NFT Voting System");

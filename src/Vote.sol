@@ -42,6 +42,8 @@ contract Vote is VoteBone {
     /////////////
     event Voted(address indexed voter, uint8 choice);
     event VoteChanged(address indexed voter, uint8 fromChoice, uint8 toChoice);
+    event VoteTransferred(address indexed from, address indexed to, uint8 choice);
+    event VoteCleared(address indexed voter, uint8 clearedChoice);
 
     constructor(
         string memory _VoteName,
@@ -247,5 +249,51 @@ contract Vote is VoteBone {
         } else {
             _selectHighestVoteWinner();
         }
+    }
+
+    /**
+     * @dev Transfer vote record when NFT is transferred (called by NFT contract)
+     * @param from Previous voter address
+     * @param to New voter address
+     */
+    function transferVoteRecord(address from, address to) external {
+        require(msg.sender == address(nftVotingContract), "Only NFT contract can call this");
+        require(VoteState == state.Open, "Cannot transfer votes after voting ends");
+        
+        // Get the vote record from the previous holder
+        uint8 voteChoice = votersRecord[from];
+        
+        // Only transfer if there was a vote record
+        if (voteChoice > 0) {
+            // Remove vote record from previous holder
+            votersRecord[from] = 0;
+            
+            // Transfer vote record to new holder
+            votersRecord[to] = voteChoice;
+            
+            // Note: totalRecord doesn't change since the vote just transferred ownership
+            // The vote count remains the same, just under different ownership
+            
+            emit VoteTransferred(from, to, voteChoice);
+        }
+    }
+
+    /**
+     * @dev Clear inherited vote record (only for current NFT holders)
+     * @dev Allows new NFT owners to start fresh if they disagree with inherited vote
+     */
+    function clearInheritedVote() external {
+        require(VoteState == state.Open, "Vote is not open");
+        require(address(nftVotingContract) != address(0), "No NFT integration");
+        require(INFTVoting(nftVotingContract).hasVotingRights(msg.sender), "No voting rights");
+        
+        uint8 currentVote = votersRecord[msg.sender];
+        require(currentVote > 0, "No vote to clear");
+        
+        // Clear the vote record and decrease total count
+        votersRecord[msg.sender] = 0;
+        totalRecord[currentVote] -= 1;
+        
+        emit VoteCleared(msg.sender, currentVote);
     }
 }
